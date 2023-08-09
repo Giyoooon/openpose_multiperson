@@ -215,7 +215,6 @@ for part in interested_joints:
 
     detected_keypoints.append(keypoints_with_id)
 
-
 # frameClone = image1.copy()
 image1_height, image1_width, _ = image1.shape 
 frameClone = np.ones((image1_height, image1_width, 3), dtype=np.uint8) * 255
@@ -230,14 +229,14 @@ valid_pairs, invalid_pairs = getValidPairs(output)
 personwiseKeypoints = getPersonwiseKeypoints(valid_pairs, invalid_pairs)
 # print(personwiseKeypoints)
 
-for i in range(len(POSE_PAIRS) - 1):
-    for n in range(len(personwiseKeypoints)):
-        index = personwiseKeypoints[n][np.array(POSE_PAIRS[i])]
-        if -1 in index:
-            continue
-        B = np.int32(keypoints_list[index.astype(int), 0])
-        A = np.int32(keypoints_list[index.astype(int), 1])
-        cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), colors[i], 10, cv2.LINE_AA)
+# for i in range(len(POSE_PAIRS) - 1):
+#     for n in range(len(personwiseKeypoints)):
+#         index = personwiseKeypoints[n][np.array(POSE_PAIRS[i])]
+#         if -1 in index:
+#             continue
+#         B = np.int32(keypoints_list[index.astype(int), 0])
+#         A = np.int32(keypoints_list[index.astype(int), 1])
+#         cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), colors[i], 10, cv2.LINE_AA)
 
 # R-Wr {4}, L-Wr {7}
 # print("R-Wr")
@@ -246,10 +245,16 @@ for i in range(len(POSE_PAIRS) - 1):
 # print(detected_keypoints[7])
 
 # print(personwiseKeypoints)      
-print(keypoints_list)
-# for i in range(1, 8):
-#     for j in range(len(detected_keypoints[i])):
-#         cv2.circle(frameClone, detected_keypoints[i][j][0:2], 20, color, -1, cv2.LINE_AA)
+# print(keypoints_list)
+dots = []
+for i in range(1, 8):
+    for j in range(len(detected_keypoints[i])):
+        dots.append(list(detected_keypoints[i][j][0:2]))
+        # cv2.circle(frameClone, detected_keypoints[i][j][0:2], 20, color, -1, cv2.LINE_AA)
+print(dots)
+polygon_dots = np.array(dots, np.int32)
+print(polygon_dots)
+cv2.polylines(frameClone, [polygon_dots], True, (0, 0, 0), 10)
 
 cv2.imshow("Detected Pose" , frameClone)
 cv2.imwrite('./skeleton.png', frameClone)
