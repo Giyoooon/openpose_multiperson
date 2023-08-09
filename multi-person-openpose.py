@@ -22,17 +22,14 @@ keypointsMapping = ['Nose', 'Neck', 'R-Sho', 'R-Elb', 'R-Wr', 'L-Sho',
                     'L-Elb', 'L-Wr', 'R-Hip', 'R-Knee', 'R-Ank', 'L-Hip', 
                     'L-Knee', 'L-Ank', 'R-Eye', 'L-Eye', 'R-Ear', 'L-Ear']
 
-POSE_PAIRS = [[1,2], [1,5], [2,3], [3,4], [5,6], [6,7],
-              [1,0]]
+POSE_PAIRS = [[1,2], [1,5], [2,3], [3,4], [5,6], [6,7], [1,0]]
 
 # index of pafs correspoding to the POSE_PAIRS
 # e.g for POSE_PAIR(1,2), the PAFs are located at indices (31,32) of output, Similarly, (1,5) -> (39,40) and so on.
-mapIdx = [[31,32], [39,40], [33,34], [35,36], [41,42], [43,44], 
-          [47,48]]
+mapIdx = [[31,32], [39,40], [33,34], [35,36], [41,42], [43,44], [47,48]]
 
-colors = [ [0,100,255], [0,100,255], [0,255,255], [0,100,255], [0,255,255], [0,100,255],
-         [0,255,0], [255,200,100], [255,0,255], [0,255,0], [255,200,100], [255,0,255],
-         [0,0,255], [255,0,0], [200,200,0], [255,0,0], [200,200,0], [0,0,0]]
+colors = [ [0,100,255], [0,100,255], [0,255,255], [0,100,255], [0,255,255], [0,100,255], [0,255,0], [255,200,100], [255,0,255], [0,255,0], [255,200,100], [255,0,255], [0,0,255], [255,0,0], [200,200,0], [255,0,0], [200,200,0], [0,0,0]]
+poly_colors = [[255,0, 0], [0, 255, 0], [0, 0, 255], [0, 0, 0]]
 
 color = [0, 0, 0]
 
@@ -180,7 +177,7 @@ elif args.device == "gpu":
     net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
     print("Using GPU device")
 
-print("Time Taken in forward pass1 = {}".format(time.time() - t))
+# print("Time Taken in forward pass1 = {}".format(time.time() - t))
 
 # Fix the input Height and get the width according to the Aspect Ratio
 inHeight = 368
@@ -195,7 +192,7 @@ net.setInput(inpBlob)
 # print("Time Taken in forward pass3 = {}".format(time.time() - t))
 
 output = net.forward()
-# print("Time Taken in forward pass4 = {}".format(time.time() - t))
+print("Time Taken in forward pass = {}".format(time.time() - t))
 
 detected_keypoints = []
 keypoints_list = np.zeros((0,3))
@@ -229,33 +226,78 @@ valid_pairs, invalid_pairs = getValidPairs(output)
 personwiseKeypoints = getPersonwiseKeypoints(valid_pairs, invalid_pairs)
 # print(personwiseKeypoints)
 
-# for i in range(len(POSE_PAIRS) - 1):
-#     for n in range(len(personwiseKeypoints)):
-#         index = personwiseKeypoints[n][np.array(POSE_PAIRS[i])]
-#         if -1 in index:
-#             continue
-#         B = np.int32(keypoints_list[index.astype(int), 0])
-#         A = np.int32(keypoints_list[index.astype(int), 1])
-#         cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), colors[i], 10, cv2.LINE_AA)
 
+for i in range(len(POSE_PAIRS) - 1):
+    for n in range(len(personwiseKeypoints)):
+        index = personwiseKeypoints[n][np.array(POSE_PAIRS[i])]
+        print(personwiseKeypoints[n][0].astype(int))
+        if -1 in index:
+            continue
+        B = np.int32(keypoints_list[index.astype(int), 0])
+        A = np.int32(keypoints_list[index.astype(int), 1])
+        # dots.append([B[0], A[0]])
+        
+        cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), poly_colors[n], 10, cv2.LINE_AA)
+
+left_set = set()
+right_set = set()
+
+
+for n in range(len(personwiseKeypoints)):
+    if n in right_set:
+        continue
+    # 왼쪽 손목
+    right_wrist_index = personwiseKeypoints[n][4]
+    if -1 == right_wrist_index: # 없으면 왼쪽 팔꿈치
+        right_wrist_index = personwiseKeypoints[n][3]
+    
+    right_wrist = np.int32(keypoints_list[right_wrist_index.astype(int)])
+    print("=" * 10)
+    print(right_wrist)
+    print("-" * 5)
+    
+    # 최소 거리 구하기
+    min_dist = np.linalg.norm(np.array([image1_height, image1_width]))
+    min_index = -1
+    min_array = right_wrist
+    for m in range(len(personwiseKeypoints)):
+        if n == m or m in left_set:
+            continue
+        left_wrist_index = personwiseKeypoints[m][7]
+        if -1 == left_wrist_index :
+            left_wrist_index = personwiseKeypoints[m][6]
+        left_wrist = np.int32(keypoints_list[left_wrist_index.astype(int)])
+        dist = np.linalg.norm(right_wrist - left_wrist)
+        if dist < min_dist:
+            min_dist = dist
+            min_index = m
+            min_array = left_wrist
+        # print(left_wrist)
+    if min_index == -1 :
+        continue
+    right_set.add(n)
+    left_set.add(min_index)
+    print(min_index, min_array)
+    cv2.line(frameClone, (right_wrist[0], right_wrist[1]), (min_array[0], min_array[1]), poly_colors[n], 10 , cv2.LINE_AA)
 # R-Wr {4}, L-Wr {7}
 # print("R-Wr")
 # print(detected_keypoints[4])
 # print("L-Wr")
 # print(detected_keypoints[7])
 
-# print(personwiseKeypoints)      
-# print(keypoints_list)
-dots = []
-for i in range(1, 8):
-    for j in range(len(detected_keypoints[i])):
-        dots.append(list(detected_keypoints[i][j][0:2]))
-        # cv2.circle(frameClone, detected_keypoints[i][j][0:2], 20, color, -1, cv2.LINE_AA)
-print(dots)
-polygon_dots = np.array(dots, np.int32)
-print(polygon_dots)
-cv2.polylines(frameClone, [polygon_dots], True, (0, 0, 0), 10)
-
+# dots = []
+# drawing_list = [4, 3, 2, 1, 5, 6, 7]
+# for j in range(0, 3):
+    # print(len(detected_keypoints[i]))
+    # for i in drawing_list:
+        # if -1 in personwiseKeypoints[j][np.]:
+        #     continue
+        # dots.append(list(detected_keypoints[i][j][0:2]))
+#         cv2.circle(frameClone, detected_keypoints[i][j][0:2], 20, poly_colors[j], -1, cv2.LINE_AA)
+# print(dots)
+# polygon_dots = np.array(dots, np.int32)
+# print(polygon_dots)
+# cv2.polylines(frameClone, [polygon_dots], True, (0, 0, 0), 10)
 cv2.imshow("Detected Pose" , frameClone)
 cv2.imwrite('./skeleton.png', frameClone)
 cv2.waitKey(0)
