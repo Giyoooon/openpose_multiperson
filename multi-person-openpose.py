@@ -4,9 +4,10 @@ import numpy as np
 from random import randint
 import argparse
 
+image_file = "group4"
 parser = argparse.ArgumentParser(description='Run keypoint detection')
 parser.add_argument("--device", default="cpu", help="Device to inference on")
-parser.add_argument("--image_file", default="group4.png", help="Input image")
+parser.add_argument("--image_file", default=image_file + ".png", help="Input image")
 
 args = parser.parse_args()
 
@@ -177,19 +178,13 @@ elif args.device == "gpu":
     net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
     print("Using GPU device")
 
-# print("Time Taken in forward pass1 = {}".format(time.time() - t))
-
 # Fix the input Height and get the width according to the Aspect Ratio
 inHeight = 368
 inWidth = int((inHeight/frameHeight)*frameWidth)
 
 inpBlob = cv2.dnn.blobFromImage(image1, 1.0 / 255, (inWidth, inHeight),
                           (0, 0, 0), swapRB=False, crop=False)
-
-# print("Time Taken in forward pass2 = {}".format(time.time() - t))
-
 net.setInput(inpBlob)
-# print("Time Taken in forward pass3 = {}".format(time.time() - t))
 
 output = net.forward()
 print("Time Taken in forward pass = {}".format(time.time() - t))
@@ -217,87 +212,61 @@ image1_height, image1_width, _ = image1.shape
 frameClone = np.ones((image1_height, image1_width, 3), dtype=np.uint8) * 255
 
 
-# for i in range(1, 8):
-#     for j in range(len(detected_keypoints[i])):
-#         cv2.circle(frameClone, detected_keypoints[i][j][0:2], 5, colors[i], -1, cv2.LINE_AA)
-#cv2.imshow("Keypoints",frameClone)
-
 valid_pairs, invalid_pairs = getValidPairs(output)
 personwiseKeypoints = getPersonwiseKeypoints(valid_pairs, invalid_pairs)
 # print(personwiseKeypoints)
 
 
+# 사람마다 검출한 스켈레톤 이어주기
 for i in range(len(POSE_PAIRS) - 1):
     for n in range(len(personwiseKeypoints)):
         index = personwiseKeypoints[n][np.array(POSE_PAIRS[i])]
-        print(personwiseKeypoints[n][0].astype(int))
+        #print(personwiseKeypoints[n][0].astype(int))
         if -1 in index:
             continue
         B = np.int32(keypoints_list[index.astype(int), 0])
         A = np.int32(keypoints_list[index.astype(int), 1])
         # dots.append([B[0], A[0]])
         
-        cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), poly_colors[n], 10, cv2.LINE_AA)
-
-left_set = set()
-right_set = set()
+        cv2.line(frameClone, (B[0], A[0]), (B[1], A[1]), [0,0,0], 10, cv2.LINE_AA)
 
 
-for n in range(len(personwiseKeypoints)):
-    if n in right_set:
+edge_list = np.zeros((0, 3))
+
+# 1. 모든 게임 참가자 좌우 손목 (팔꿈치) numpy array에 저장
+for person in range(len(personwiseKeypoints)):
+    right_wrist_index = personwiseKeypoints[person][4] if personwiseKeypoints[person][4] != -1 else personwiseKeypoints[person][3]
+    left_wrist_index = personwiseKeypoints[person][7] if personwiseKeypoints[person][7] != -1 else personwiseKeypoints[person][6]
+    edge_list = np.vstack([edge_list, np.int32(keypoints_list[right_wrist_index.astype(int)])])
+    edge_list = np.vstack([edge_list, np.int32(keypoints_list[left_wrist_index.astype(int)])])
+
+# 2. 하나씩 탐색하면서 가장 가까운 점 찾기
+matched_index = set()
+for index in range(len(edge_list)):
+    if index in matched_index:
         continue
-    # 왼쪽 손목
-    right_wrist_index = personwiseKeypoints[n][4]
-    if -1 == right_wrist_index: # 없으면 왼쪽 팔꿈치
-        right_wrist_index = personwiseKeypoints[n][3]
+    matched_index.add(index)
     
-    right_wrist = np.int32(keypoints_list[right_wrist_index.astype(int)])
-    print("=" * 10)
-    print(right_wrist)
-    print("-" * 5)
-    
-    # 최소 거리 구하기
     min_dist = np.linalg.norm(np.array([image1_height, image1_width]))
     min_index = -1
-    min_array = right_wrist
-    for m in range(len(personwiseKeypoints)):
-        if n == m or m in left_set:
+    for other_index in range(len(edge_list)):
+        # 이미 연결한 손 or 같은 사람의 손 : pass
+        if other_index in matched_index or index // 2 == other_index // 2:
             continue
-        left_wrist_index = personwiseKeypoints[m][7]
-        if -1 == left_wrist_index :
-            left_wrist_index = personwiseKeypoints[m][6]
-        left_wrist = np.int32(keypoints_list[left_wrist_index.astype(int)])
-        dist = np.linalg.norm(right_wrist - left_wrist)
-        if dist < min_dist:
-            min_dist = dist
-            min_index = m
-            min_array = left_wrist
-        # print(left_wrist)
+        cur_dist = np.linalg.norm(edge_list[index] - edge_list[other_index])
+        # 3. 기준 점 + 가장 가까운 점 체크
+        if cur_dist < min_dist:
+            min_index, min_dist = other_index, cur_dist
+
     if min_index == -1 :
         continue
-    right_set.add(n)
-    left_set.add(min_index)
-    print(min_index, min_array)
-    cv2.line(frameClone, (right_wrist[0], right_wrist[1]), (min_array[0], min_array[1]), poly_colors[n], 10 , cv2.LINE_AA)
-# R-Wr {4}, L-Wr {7}
-# print("R-Wr")
-# print(detected_keypoints[4])
-# print("L-Wr")
-# print(detected_keypoints[7])
+    matched_index.add(min_index)
+    
+    toDots = np.int32(edge_list[index])
+    fromDots = np.int32(edge_list[min_index])
+    cv2.line(frameClone, (toDots[0], toDots[1]), (fromDots[0], fromDots[1]), [0,0,0], 10 , cv2.LINE_AA)
+    
 
-# dots = []
-# drawing_list = [4, 3, 2, 1, 5, 6, 7]
-# for j in range(0, 3):
-    # print(len(detected_keypoints[i]))
-    # for i in drawing_list:
-        # if -1 in personwiseKeypoints[j][np.]:
-        #     continue
-        # dots.append(list(detected_keypoints[i][j][0:2]))
-#         cv2.circle(frameClone, detected_keypoints[i][j][0:2], 20, poly_colors[j], -1, cv2.LINE_AA)
-# print(dots)
-# polygon_dots = np.array(dots, np.int32)
-# print(polygon_dots)
-# cv2.polylines(frameClone, [polygon_dots], True, (0, 0, 0), 10)
 cv2.imshow("Detected Pose" , frameClone)
-cv2.imwrite('./skeleton.png', frameClone)
+cv2.imwrite('./' + image_file + "_skeleton.png", frameClone)
 cv2.waitKey(0)
